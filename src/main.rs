@@ -31,7 +31,7 @@ impl App {
         Self {
             options: vec![
                 Option {
-                    label: "Utiliser Opus 4.5",
+                    label: "Use Opus 4.5",
                     arg: "--model claude-opus-4-5-20251101",
                     checked: true,
                 },
@@ -196,7 +196,7 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
     };
     let launch_prefix = if app.launch_selected { ">" } else { " " };
     lines.push(Line::from(Span::styled(
-        format!("  {} >>> Lancer Claude <<<", launch_prefix),
+        format!("  {} >>> Launch Claude <<<", launch_prefix),
         launch_style,
     )));
 
@@ -206,11 +206,11 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
     let help = Paragraph::new(Line::from(vec![
         Span::styled(" ", Style::default()),
         Span::styled("↑/↓", Style::default().fg(Color::Cyan)),
-        Span::styled(": naviguer  ", Style::default().fg(Color::DarkGray)),
-        Span::styled("Entrée/Espace", Style::default().fg(Color::Cyan)),
+        Span::styled(": navigate  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Enter/Space", Style::default().fg(Color::Cyan)),
         Span::styled(": toggle  ", Style::default().fg(Color::DarkGray)),
         Span::styled("q", Style::default().fg(Color::Cyan)),
-        Span::styled(": quitter", Style::default().fg(Color::DarkGray)),
+        Span::styled(": quit", Style::default().fg(Color::DarkGray)),
     ]));
     f.render_widget(help, chunks[3]);
 }
