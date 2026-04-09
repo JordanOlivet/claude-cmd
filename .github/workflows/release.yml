@@ -30,7 +30,7 @@ jobs:
       platforms: |
         [
           {"os":"windows-latest","target":"x86_64-pc-windows-msvc","artifact":"claude-cmd.exe","asset":"claude-cmd-windows-x86_64.exe"},
-          {"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","artifact":"claude-cmd","asset":"claude-cmd-linux-x86_64"},
+          {"os":"ubuntu-latest","target":"x86_64-unknown-linux-musl","artifact":"claude-cmd","asset":"claude-cmd-linux-x86_64"},
           {"os":"macos-latest","target":"x86_64-apple-darwin","artifact":"claude-cmd","asset":"claude-cmd-macos-x86_64"},
           {"os":"macos-latest","target":"aarch64-apple-darwin","artifact":"claude-cmd","asset":"claude-cmd-macos-arm64"}
         ]
