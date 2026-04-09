@@ -12,26 +12,59 @@ Interactive launcher for Claude Code with TUI (Terminal User Interface).
 
 | Option | Generated Argument |
 |--------|-------------------|
-| Use Opus 4.5 | `--model claude-opus-4-5-20251101` |
 | Skip permissions | `--dangerously-skip-permissions` |
+| Use Opus 4.5 | `--model claude-opus-4-5-20251101` |
 
 ## Installation
 
-### Prerequisites
+### From GitHub Releases (recommended)
 
-- [Rust](https://rustup.rs/) installed
+Download the latest binary from the [Releases](https://github.com/JordanOlivet/claude-cmd/releases) page.
 
-### Build
+#### Windows
+
+```powershell
+# Download the binary
+curl -Lo claude-cmd.exe https://github.com/JordanOlivet/claude-cmd/releases/latest/download/claude-cmd-windows-x86_64.exe
+
+# Move it to a directory in your PATH
+move claude-cmd.exe C:\Users\%USERNAME%\.local\bin\
+```
+
+#### Linux
+
+```bash
+# Download the binary
+curl -Lo claude-cmd https://github.com/JordanOlivet/claude-cmd/releases/latest/download/claude-cmd-linux-x86_64
+
+# Make it executable and move it to your PATH
+chmod +x claude-cmd
+sudo mv claude-cmd /usr/local/bin/
+```
+
+#### macOS
+
+```bash
+# Download the binary (Apple Silicon)
+curl -Lo claude-cmd https://github.com/JordanOlivet/claude-cmd/releases/latest/download/claude-cmd-macos-arm64
+
+# Or for Intel Macs
+# curl -Lo claude-cmd https://github.com/JordanOlivet/claude-cmd/releases/latest/download/claude-cmd-macos-x86_64
+
+# Make it executable and move it to your PATH
+chmod +x claude-cmd
+sudo mv claude-cmd /usr/local/bin/
+```
+
+### From source
+
+Requires [Rust](https://rustup.rs/).
 
 ```bash
 cargo build --release
 ```
 
-Binary will be in `target/release/claude-cmd.exe`.
-
-### Add to PATH
-
-Copy `claude-cmd.exe` to a folder in PATH, or add `target/release` to PATH.
+Binary will be in `target/release/claude-cmd` (or `claude-cmd.exe` on Windows). Copy it to a directory in your PATH.
 
 ## Usage
 
@@ -54,8 +87,8 @@ claude-cmd
 ```
 ┌─ Claude Code Launcher ───────────────┐
 │                                      │
-│  > [x] Use Opus 4.5                  │
-│    [ ] Skip permissions              │
+│  > [x] Skip permissions              │
+│    [ ] Use Opus 4.5                  │
 │                                      │
 │    >>> Launch Claude <<<             │
 │                                      │

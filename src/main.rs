@@ -31,13 +31,13 @@ impl App {
         Self {
             options: vec![
                 Option {
-                    label: "Use Opus 4.5",
-                    arg: "--model claude-opus-4-5-20251101",
+                    label: "Skip permissions",
+                    arg: "--dangerously-skip-permissions",
                     checked: true,
                 },
                 Option {
-                    label: "Skip permissions",
-                    arg: "--dangerously-skip-permissions",
+                    label: "Use Opus 4.5",
+                    arg: "--model claude-opus-4-5-20251101",
                     checked: false,
                 },
             ],
