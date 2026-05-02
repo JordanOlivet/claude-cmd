@@ -36,6 +36,11 @@ impl App {
                     checked: true,
                 },
                 Option {
+                    label: "Use Opus 4.6",
+                    arg: "--model claude-opus-4-6",
+                    checked: true,
+                },
+                Option {
                     label: "Use Opus 4.5",
                     arg: "--model claude-opus-4-5-20251101",
                     checked: false,
