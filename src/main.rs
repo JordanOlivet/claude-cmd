@@ -88,7 +88,139 @@ impl App {
     }
 }
 
+#[derive(serde::Deserialize)]
+struct GitHubRelease {
+    tag_name: String,
+    assets: Vec<GitHubAsset>,
+}
+
+#[derive(serde::Deserialize)]
+struct GitHubAsset {
+    name: String,
+    browser_download_url: String,
+}
+
+fn get_asset_name() -> Result<&'static str, String> {
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("windows", "x86_64") => Ok("claude-cmd-windows-x86_64.exe"),
+        ("linux", "x86_64") => Ok("claude-cmd-linux-x86_64"),
+        ("macos", "x86_64") => Ok("claude-cmd-macos-x86_64"),
+        ("macos", "aarch64") => Ok("claude-cmd-macos-arm64"),
+        (os, arch) => Err(format!("Unsupported platform: {}-{}", os, arch)),
+    }
+}
+
+fn fetch_latest_release() -> Result<GitHubRelease, Box<dyn std::error::Error>> {
+    let url = "https://api.github.com/repos/JordanOlivet/claude-cmd/releases/latest";
+    let body = ureq::get(url)
+        .header("Accept", "application/vnd.github.v3+json")
+        .header("User-Agent", "claude-cmd-updater")
+        .call()?
+        .body_mut()
+        .read_to_string()?;
+    let release: GitHubRelease = serde_json::from_str(&body)?;
+    Ok(release)
+}
+
+fn download_asset(url: &str) -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
+    let bytes = ureq::get(url)
+        .header("User-Agent", "claude-cmd-updater")
+        .call()?
+        .body_mut()
+        .read_to_vec()?;
+    let tmp_path = std::env::temp_dir().join("claude-cmd-update");
+    std::fs::write(&tmp_path, &bytes)?;
+    Ok(tmp_path)
+}
+
+fn run_update() -> io::Result<()> {
+    let current_version = env!("CARGO_PKG_VERSION");
+    println!("Current version: v{}", current_version);
+    println!("Checking for updates...");
+
+    let asset_name = match get_asset_name() {
+        Ok(name) => name,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let release = match fetch_latest_release() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Error checking for updates: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let latest_version = release.tag_name.strip_prefix('v').unwrap_or(&release.tag_name);
+    if latest_version == current_version {
+        println!("Already up to date (v{}).", current_version);
+        return Ok(());
+    }
+    println!("New version available: v{} -> v{}", current_version, latest_version);
+
+    let asset = match release.assets.iter().find(|a| a.name == asset_name) {
+        Some(a) => a,
+        None => {
+            eprintln!(
+                "Error: No asset '{}' found in release v{}. Available: {}",
+                asset_name,
+                latest_version,
+                release
+                    .assets
+                    .iter()
+                    .map(|a| a.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            std::process::exit(1);
+        }
+    };
+
+    println!("Downloading {}...", asset.name);
+    let tmp_path = match download_asset(&asset.browser_download_url) {
+        Ok(path) => path,
+        Err(e) => {
+            eprintln!("Error downloading update: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    println!("Installing...");
+    match self_replace::self_replace(&tmp_path) {
+        Ok(()) => {
+            std::fs::remove_file(&tmp_path).ok();
+            println!("Successfully updated to v{}!", latest_version);
+        }
+        Err(e) => {
+            std::fs::remove_file(&tmp_path).ok();
+            eprintln!("Error replacing binary: {}", e);
+            eprintln!("You may need to run with elevated permissions.");
+            std::process::exit(1);
+        }
+    }
+
+    Ok(())
+}
+
 fn main() -> io::Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 {
+        match args[1].as_str() {
+            "update" => return run_update(),
+            "--version" | "-V" => {
+                println!("claude-cmd v{}", env!("CARGO_PKG_VERSION"));
+                return Ok(());
+            }
+            other => {
+                eprintln!("Unknown command: {}", other);
+                std::process::exit(1);
+            }
+        }
+    }
+
     enable_raw_mode()?;
     stdout().execute(EnterAlternateScreen)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
