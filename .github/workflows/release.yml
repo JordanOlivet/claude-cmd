@@ -27,6 +27,7 @@ jobs:
     uses: JordanOlivet/ci-workflows/.github/workflows/build-rust.yml@v1
     with:
       version: ${{ needs.release.outputs.version }}
+      ref: ${{ needs.release.outputs.tag }}
       platforms: |
         [
           {"os":"windows-latest","target":"x86_64-pc-windows-msvc","artifact":"claude-cmd.exe","asset":"claude-cmd-windows-x86_64.exe"},
