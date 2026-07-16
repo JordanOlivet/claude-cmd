@@ -25,7 +25,7 @@ Download the latest binary from the [Releases](https://github.com/JordanOlivet/c
 
 ```powershell
 # Download the binary
-curl -Lo claude-cmd.exe https://github.com/JordanOlivet/claude-cmd/releases/latest/download/claude-cmd-windows-x86_64.exe
+curl.exe -Lo claude-cmd.exe https://github.com/JordanOlivet/claude-cmd/releases/latest/download/claude-cmd-windows-x86_64.exe
 
 # Move it to a directory in your PATH
 move claude-cmd.exe C:\Users\%USERNAME%\.local\bin\
