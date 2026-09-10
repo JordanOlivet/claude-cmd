@@ -13,8 +13,6 @@ Interactive launcher for Claude Code with TUI (Terminal User Interface).
 | Option | Generated Argument |
 |--------|-------------------|
 | Skip permissions | `--dangerously-skip-permissions` |
-| Use Fable 5 (1M context) | `--model claude-fable-5[1m]` |
-| Use Opus 4.6 | `--model claude-opus-4-6` |
 | Use Opus 4.5 | `--model claude-opus-4-5-20251101` |
 
 ## Installation
@@ -90,8 +88,6 @@ claude-cmd
 ┌─ Claude Code Launcher ───────────────┐
 │                                      │
 │  > [x] Skip permissions              │
-│    [ ] Use Fable 5 (1M context)      │
-│    [ ] Use Opus 4.6                  │
 │    [ ] Use Opus 4.5                  │
 │                                      │
 │    >>> Launch Claude <<<             │
