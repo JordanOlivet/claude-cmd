@@ -11,90 +11,230 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
     Terminal,
 };
+use std::collections::HashMap;
 use std::io::{self, stdout};
+use std::path::PathBuf;
 use std::process::Command;
 
-struct Option {
+struct ToggleOption {
     label: &'static str,
     arg: &'static str,
     checked: bool,
 }
 
-struct App {
-    options: Vec<Option>,
+struct RadioChoice {
+    label: &'static str,
+    arg: &'static str,
+}
+
+struct RadioGroup {
+    name: &'static str,
+    choices: Vec<RadioChoice>,
     selected: usize,
-    launch_selected: bool,
+}
+
+enum Focus {
+    Button,
+    Toggle(usize),
+    Choice(usize, usize),
+}
+
+struct App {
+    toggles: Vec<ToggleOption>,
+    groups: Vec<RadioGroup>,
+    focus: usize,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+struct SavedConfig {
+    #[serde(default)]
+    toggles: HashMap<String, bool>,
+    #[serde(default)]
+    radios: HashMap<String, String>,
+}
+
+fn config_path() -> Option<PathBuf> {
+    dirs::config_dir().map(|d| d.join("claude-cmd").join("config.json"))
 }
 
 impl App {
     fn new() -> Self {
-        Self {
-            options: vec![
-                Option {
-                    label: "Skip permissions",
-                    arg: "--dangerously-skip-permissions",
-                    checked: true,
+        let mut app = Self {
+            toggles: vec![ToggleOption {
+                label: "Skip permissions",
+                arg: "--dangerously-skip-permissions",
+                checked: true,
+            }],
+            groups: vec![
+                RadioGroup {
+                    name: "Model",
+                    choices: vec![
+                        RadioChoice {
+                            label: "Default model",
+                            arg: "",
+                        },
+                        RadioChoice {
+                            label: "Fable 5 (1M context)",
+                            arg: "--model claude-fable-5[1m]",
+                        },
+                        RadioChoice {
+                            label: "Opus 4.8 (1M context)",
+                            arg: "--model claude-opus-4-8[1m]",
+                        },
+                        RadioChoice {
+                            label: "Opus 4.6",
+                            arg: "--model claude-opus-4-6",
+                        },
+                        RadioChoice {
+                            label: "Opus 4.5",
+                            arg: "--model claude-opus-4-5-20251101",
+                        },
+                    ],
+                    selected: 1,
                 },
-                Option {
-                    label: "Use Fable 5 (1M context)",
-                    arg: "--model claude-fable-5[1m]",
-                    checked: true,
-                },
-                Option {
-                    label: "Use Opus 4.8 (1M context)",
-                    arg: "--model claude-opus-4-8[1m]",
-                    checked: false,
-                },
-                Option {
-                    label: "Use Opus 4.6",
-                    arg: "--model claude-opus-4-6",
-                    checked: false,
-                },
-                Option {
-                    label: "Use Opus 4.5",
-                    arg: "--model claude-opus-4-5-20251101",
-                    checked: false,
+                RadioGroup {
+                    name: "Session",
+                    choices: vec![
+                        RadioChoice {
+                            label: "New session",
+                            arg: "",
+                        },
+                        RadioChoice {
+                            label: "Continue last session",
+                            arg: "--continue",
+                        },
+                        RadioChoice {
+                            label: "Resume a session",
+                            arg: "--resume",
+                        },
+                    ],
+                    selected: 0,
                 },
             ],
-            selected: 0,
-            launch_selected: false,
+            focus: 0,
+        };
+        app.apply_saved_config();
+        app
+    }
+
+    fn item_count(&self) -> usize {
+        1 + self.toggles.len() + self.groups.iter().map(|g| g.choices.len()).sum::<usize>()
+    }
+
+    fn focus_target(&self) -> Focus {
+        let mut idx = self.focus;
+        if idx == 0 {
+            return Focus::Button;
         }
+        idx -= 1;
+        if idx < self.toggles.len() {
+            return Focus::Toggle(idx);
+        }
+        idx -= self.toggles.len();
+        for (gi, group) in self.groups.iter().enumerate() {
+            if idx < group.choices.len() {
+                return Focus::Choice(gi, idx);
+            }
+            idx -= group.choices.len();
+        }
+        Focus::Button
     }
 
     fn move_up(&mut self) {
-        if self.launch_selected {
-            self.launch_selected = false;
-            self.selected = self.options.len() - 1;
-        } else if self.selected > 0 {
-            self.selected -= 1;
+        if self.focus > 0 {
+            self.focus -= 1;
         }
     }
 
     fn move_down(&mut self) {
-        if self.launch_selected {
-            return;
-        }
-        if self.selected < self.options.len() - 1 {
-            self.selected += 1;
-        } else {
-            self.launch_selected = true;
+        if self.focus + 1 < self.item_count() {
+            self.focus += 1;
         }
     }
 
-    fn toggle(&mut self) {
-        if !self.launch_selected {
-            self.options[self.selected].checked = !self.options[self.selected].checked;
+    fn activate(&mut self) {
+        match self.focus_target() {
+            Focus::Button => {}
+            Focus::Toggle(i) => self.toggles[i].checked = !self.toggles[i].checked,
+            Focus::Choice(g, c) => self.groups[g].selected = c,
         }
     }
 
     fn build_command(&self) -> Vec<String> {
         let mut args = Vec::new();
-        for opt in &self.options {
+        for opt in &self.toggles {
             if opt.checked {
                 args.extend(opt.arg.split_whitespace().map(String::from));
             }
         }
+        for group in &self.groups {
+            let arg = group.choices[group.selected].arg;
+            if !arg.is_empty() {
+                args.extend(arg.split_whitespace().map(String::from));
+            }
+        }
         args
+    }
+
+    fn preview(&self) -> String {
+        let mut cmd = String::from("claude");
+        for arg in self.build_command() {
+            cmd.push(' ');
+            cmd.push_str(&arg);
+        }
+        cmd
+    }
+
+    // Saved options are matched by label so reordering or adding options
+    // in a future version does not corrupt restored choices.
+    fn apply_saved_config(&mut self) {
+        let Some(path) = config_path() else { return };
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            return;
+        };
+        let saved: SavedConfig = match serde_json::from_str(&content) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        for toggle in &mut self.toggles {
+            if let Some(&checked) = saved.toggles.get(toggle.label) {
+                toggle.checked = checked;
+            }
+        }
+        for group in &mut self.groups {
+            if let Some(label) = saved.radios.get(group.name) {
+                if let Some(i) = group.choices.iter().position(|c| c.label == label) {
+                    group.selected = i;
+                }
+            }
+        }
+    }
+
+    fn save_config(&self) {
+        let Some(path) = config_path() else { return };
+        let saved = SavedConfig {
+            toggles: self
+                .toggles
+                .iter()
+                .map(|t| (t.label.to_string(), t.checked))
+                .collect(),
+            radios: self
+                .groups
+                .iter()
+                .map(|g| (g.name.to_string(), g.choices[g.selected].label.to_string()))
+                .collect(),
+        };
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        match serde_json::to_string_pretty(&saved) {
+            Ok(json) => {
+                if let Err(e) = std::fs::write(&path, json) {
+                    eprintln!("Warning: could not save config: {}", e);
+                }
+            }
+            Err(e) => eprintln!("Warning: could not serialize config: {}", e),
+        }
     }
 }
 
@@ -242,6 +382,7 @@ fn main() -> io::Result<()> {
     stdout().execute(LeaveAlternateScreen)?;
 
     if let Ok(true) = result {
+        app.save_config();
         let args = app.build_command();
         let status = Command::new("claude").args(&args).status();
 
@@ -273,14 +414,8 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                 KeyCode::Char('q') | KeyCode::Esc => return Ok(false),
                 KeyCode::Up | KeyCode::Char('k') => app.move_up(),
                 KeyCode::Down | KeyCode::Char('j') => app.move_down(),
-                KeyCode::Char(' ') => app.toggle(),
-                KeyCode::Enter => {
-                    if app.launch_selected {
-                        return Ok(true);
-                    } else {
-                        app.toggle();
-                    }
-                }
+                KeyCode::Char(' ') => app.activate(),
+                KeyCode::Enter => return Ok(true),
                 _ => {}
             }
         }
@@ -290,8 +425,20 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
 fn ui(f: &mut ratatui::Frame, app: &App) {
     let size = f.size();
 
-    let box_width = 42;
-    let box_height = 10;
+    // Content: button + (blank + toggles) + per group (blank + header + choices)
+    let content_height = 1
+        + 1
+        + app.toggles.len()
+        + app
+            .groups
+            .iter()
+            .map(|g| 2 + g.choices.len())
+            .sum::<usize>();
+    // + top padding, preview, help, 2 borders
+    let box_height = (content_height + 5) as u16;
+    let preview = app.preview();
+    let box_width = (preview.len() as u16 + 6).max(46);
+
     let x = (size.width.saturating_sub(box_width)) / 2;
     let y = (size.height.saturating_sub(box_height)) / 2;
 
@@ -315,47 +462,71 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
         ])
         .split(inner);
 
+    let focus_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
     let mut lines = Vec::new();
-    for (i, opt) in app.options.iter().enumerate() {
-        let checkbox = if opt.checked { "[x]" } else { "[ ]" };
-        let prefix = if !app.launch_selected && i == app.selected {
-            ">"
-        } else {
-            " "
-        };
-        let style = if !app.launch_selected && i == app.selected {
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
-        } else {
-            Style::default()
-        };
-        lines.push(Line::from(Span::styled(
-            format!("  {} {} {}", prefix, checkbox, opt.label),
-            style,
-        )));
-    }
+    let mut idx = 0usize;
 
-    lines.push(Line::from(""));
-
-    let launch_style = if app.launch_selected {
+    let launch_style = if app.focus == idx {
         Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(Color::White)
     };
-    let launch_prefix = if app.launch_selected { ">" } else { " " };
+    let launch_prefix = if app.focus == idx { ">" } else { " " };
     lines.push(Line::from(Span::styled(
         format!("  {} >>> Launch Claude <<<", launch_prefix),
         launch_style,
     )));
+    idx += 1;
+
+    lines.push(Line::from(""));
+    for opt in &app.toggles {
+        let checkbox = if opt.checked { "[x]" } else { "[ ]" };
+        let focused = app.focus == idx;
+        let prefix = if focused { ">" } else { " " };
+        let style = if focused { focus_style } else { Style::default() };
+        lines.push(Line::from(Span::styled(
+            format!("  {} {} {}", prefix, checkbox, opt.label),
+            style,
+        )));
+        idx += 1;
+    }
+
+    for group in &app.groups {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            format!("  {}", group.name),
+            Style::default().fg(Color::DarkGray),
+        )));
+        for (ci, choice) in group.choices.iter().enumerate() {
+            let marker = if group.selected == ci { "(•)" } else { "( )" };
+            let focused = app.focus == idx;
+            let prefix = if focused { ">" } else { " " };
+            let style = if focused { focus_style } else { Style::default() };
+            lines.push(Line::from(Span::styled(
+                format!("  {} {} {}", prefix, marker, choice.label),
+                style,
+            )));
+            idx += 1;
+        }
+    }
 
     let options_paragraph = Paragraph::new(lines);
     f.render_widget(options_paragraph, chunks[1]);
+
+    let preview_paragraph = Paragraph::new(Line::from(Span::styled(
+        format!(" $ {}", preview),
+        Style::default().fg(Color::DarkGray),
+    )));
+    f.render_widget(preview_paragraph, chunks[2]);
 
     let help = Paragraph::new(Line::from(vec![
         Span::styled(" ", Style::default()),
         Span::styled("↑/↓", Style::default().fg(Color::Cyan)),
         Span::styled(": navigate  ", Style::default().fg(Color::DarkGray)),
-        Span::styled("Enter/Space", Style::default().fg(Color::Cyan)),
-        Span::styled(": toggle  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Space", Style::default().fg(Color::Cyan)),
+        Span::styled(": select  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Enter", Style::default().fg(Color::Cyan)),
+        Span::styled(": launch  ", Style::default().fg(Color::DarkGray)),
         Span::styled("q", Style::default().fg(Color::Cyan)),
         Span::styled(": quit", Style::default().fg(Color::DarkGray)),
     ]));
