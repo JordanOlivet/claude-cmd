@@ -527,7 +527,7 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
         Span::styled(": select  ", Style::default().fg(Color::DarkGray)),
         Span::styled("Enter", Style::default().fg(Color::Cyan)),
         Span::styled(": launch  ", Style::default().fg(Color::DarkGray)),
-        Span::styled("q", Style::default().fg(Color::Cyan)),
+        Span::styled("q/Esc", Style::default().fg(Color::Cyan)),
         Span::styled(": quit", Style::default().fg(Color::DarkGray)),
     ]));
     f.render_widget(help, chunks[3]);
