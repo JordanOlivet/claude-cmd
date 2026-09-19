@@ -24,8 +24,9 @@ claude-cmd/
 - `enum Focus` - Resolves the flat focus index into Button / Toggle / Choice
 - `struct App` - Application state (toggles, groups, focus index; focus 0 = launch button)
 - `struct SavedConfig` + `config_path()` - Persistence of choices as JSON, keyed by label
-- `fn main()` - Terminal initialization, main loop, config save, claude launch
-- `fn run_app()` - Keyboard event loop (`Space` = toggle/select, `Enter` = launch from anywhere)
+- `fn main()` - Terminal initialization, background update check, main loop, config save, claude launch
+- `fn run_app()` - Keyboard event loop (`Space` = toggle/select, `Enter` = launch from anywhere); polls events with a 200ms timeout and drains the update-check channel so the notice can appear without a key press
+- Update check - spawned as a thread before the TUI starts (never blocks startup or launch); on a newer GitHub release, a yellow notice line suggests `claude-cmd update`
 - `fn ui()` - Interface rendering with ratatui (launch button first, sections, command preview)
 
 ### Execution Flow

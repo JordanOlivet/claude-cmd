@@ -8,6 +8,7 @@ Interactive launcher for Claude Code with TUI (Terminal User Interface).
 - Choices are persisted between launches (config file)
 - Toggle options (checkboxes) and exclusive choices (radio groups) for model and session
 - Live preview of the generated `claude` command
+- Update notice on start when a newer release exists (run `claude-cmd update` to install it)
 - Intuitive keyboard navigation
 
 ## Available Options

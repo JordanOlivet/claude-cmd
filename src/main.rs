@@ -15,6 +15,8 @@ use std::collections::HashMap;
 use std::io::{self, stdout};
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::mpsc;
+use std::time::Duration;
 
 struct ToggleOption {
     label: &'static str,
@@ -43,6 +45,7 @@ struct App {
     toggles: Vec<ToggleOption>,
     groups: Vec<RadioGroup>,
     focus: usize,
+    update_notice: Option<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Default)]
@@ -112,6 +115,7 @@ impl App {
                 },
             ],
             focus: 0,
+            update_notice: None,
         };
         app.apply_saved_config();
         app
@@ -371,12 +375,28 @@ fn main() -> io::Result<()> {
         }
     }
 
+    // Check for updates in the background so the TUI starts instantly;
+    // the result is picked up by the event loop when (and if) it arrives.
+    let (update_tx, update_rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        if let Ok(release) = fetch_latest_release() {
+            let latest = release
+                .tag_name
+                .strip_prefix('v')
+                .unwrap_or(&release.tag_name)
+                .to_string();
+            if latest != env!("CARGO_PKG_VERSION") {
+                let _ = update_tx.send(latest);
+            }
+        }
+    });
+
     enable_raw_mode()?;
     stdout().execute(EnterAlternateScreen)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
 
     let mut app = App::new();
-    let result = run_app(&mut terminal, &mut app);
+    let result = run_app(&mut terminal, &mut app, &update_rx);
 
     disable_raw_mode()?;
     stdout().execute(LeaveAlternateScreen)?;
@@ -402,10 +422,25 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
-fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> io::Result<bool> {
+fn run_app(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    app: &mut App,
+    update_rx: &mpsc::Receiver<String>,
+) -> io::Result<bool> {
     loop {
+        if app.update_notice.is_none() {
+            if let Ok(latest) = update_rx.try_recv() {
+                app.update_notice = Some(latest);
+            }
+        }
+
         terminal.draw(|f| ui(f, app))?;
 
+        // Poll instead of blocking so the update notice can appear
+        // without waiting for a key press.
+        if !event::poll(Duration::from_millis(200))? {
+            continue;
+        }
         if let Event::Key(key) = event::read()? {
             if key.kind != KeyEventKind::Press {
                 continue;
@@ -435,9 +470,21 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
             .map(|g| 2 + g.choices.len())
             .sum::<usize>();
     // + top padding, preview, help, 2 borders
-    let box_height = (content_height + 5) as u16;
+    let mut box_height = (content_height + 5) as u16;
     let preview = app.preview();
-    let box_width = (preview.len() as u16 + 6).max(46);
+    let mut box_width = (preview.len() as u16 + 6).max(46);
+
+    let notice = app.update_notice.as_ref().map(|latest| {
+        format!(
+            "Update available: v{} -> v{} - run 'claude-cmd update'",
+            env!("CARGO_PKG_VERSION"),
+            latest
+        )
+    });
+    if let Some(notice) = &notice {
+        box_height += 1;
+        box_width = box_width.max(notice.len() as u16 + 4);
+    }
 
     let x = (size.width.saturating_sub(box_width)) / 2;
     let y = (size.height.saturating_sub(box_height)) / 2;
@@ -452,14 +499,18 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
+    let mut constraints = vec![
+        Constraint::Length(1),
+        Constraint::Min(0),
+        Constraint::Length(1),
+    ];
+    if notice.is_some() {
+        constraints.push(Constraint::Length(1));
+    }
+    constraints.push(Constraint::Length(1));
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1),
-            Constraint::Min(0),
-            Constraint::Length(1),
-            Constraint::Length(1),
-        ])
+        .constraints(constraints)
         .split(inner);
 
     let focus_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
@@ -519,6 +570,14 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
     )));
     f.render_widget(preview_paragraph, chunks[2]);
 
+    if let Some(notice) = &notice {
+        let notice_paragraph = Paragraph::new(Line::from(Span::styled(
+            format!(" {}", notice),
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        )));
+        f.render_widget(notice_paragraph, chunks[3]);
+    }
+
     let help = Paragraph::new(Line::from(vec![
         Span::styled(" ", Style::default()),
         Span::styled("↑/↓", Style::default().fg(Color::Cyan)),
@@ -530,5 +589,5 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
         Span::styled("q/Esc", Style::default().fg(Color::Cyan)),
         Span::styled(": quit", Style::default().fg(Color::DarkGray)),
     ]));
-    f.render_widget(help, chunks[3]);
+    f.render_widget(help, chunks[chunks.len() - 1]);
 }
