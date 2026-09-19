@@ -38,7 +38,7 @@ impl App {
                 Option {
                     label: "Use Fable 5 (1M context)",
                     arg: "--model claude-fable-5[1m]",
-                    checked: false,
+                    checked: true,
                 },
                 Option {
                     label: "Use Opus 4.6",
